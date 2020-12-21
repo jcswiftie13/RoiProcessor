@@ -141,8 +141,34 @@ namespace RoiProcessor
             new PointF(rec.BottomRight.X - roi.TopLeft.X, rec.BottomRight.Y - roi.TopLeft.Y)
             };
 
-            if (Within(rec, roi)) recs.RemoveAt(idx);
-            g.FillPolygon(brush, points);
+            if (Within(rec, roi))
+            {
+                recs.RemoveAt(idx);
+                g.FillPolygon(brush, points);
+            }
+            else
+            {
+                for (int i = 0; i < 4; i++)
+                {
+                    if (points[i].X > roi.Width)
+                    {
+                        points[i].X = roi.Width;
+                    }
+                    else if (points[i].X < 0)
+                    {
+                        points[i].X = 0;
+                    }
+                    if (points[i].Y > roi.Height)
+                    {
+                        points[i].Y = roi.Height;
+                    }
+                    else if (points[i].Y < 0)
+                    {
+                        points[i].Y = 0;
+                    }
+                }
+                g.FillPolygon(brush, points);
+            }
         }
         //GetBitmap的roi部分也還不清楚會是以何格式傳輸
         public void GetBitmap(List<Rectangle> data, Rectangle roi)
