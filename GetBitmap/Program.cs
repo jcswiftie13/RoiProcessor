@@ -88,6 +88,8 @@ namespace RoiProcessor
     {
         public Image img;
         public Graphics g;
+        public float MaxHeight = 0;
+        public float MaxWidth = 0;
         private List<Rectangle> recs;
 
         public Processor(string data)
@@ -104,6 +106,14 @@ namespace RoiProcessor
             while ((line = file.ReadLine()) != null)
             {
                 Rectangle temp = new Rectangle();
+                if (MaxHeight < temp.Height)
+                {
+                    MaxHeight = temp.Height;
+                }
+                if (MaxWidth < temp.Width)
+                {
+                    MaxWidth = temp.Width;
+                }
                 temp.Rotate();
                 recs.Add(temp);
             }
@@ -132,48 +142,23 @@ namespace RoiProcessor
             return false;
         }
 
-        private void FillPolygon(Brush brush, Rectangle rec, Rectangle roi, int idx)
+        private void FillPolygon(Brush brush, Rectangle rec, Rectangle roi, float peri)
         {
             PointF[] points = new PointF[4] {
-            new PointF(rec.TopLeft.X - roi.TopLeft.X, rec.TopLeft.Y - roi.TopLeft.Y),
-            new PointF(rec.TopRight.X - roi.TopLeft.X, rec.TopRight.Y - roi.TopLeft.Y),
-            new PointF(rec.BottomLeft.X - roi.TopLeft.X, rec.BottomLeft.Y - roi.TopLeft.Y),
-            new PointF(rec.BottomRight.X - roi.TopLeft.X, rec.BottomRight.Y - roi.TopLeft.Y)
+            new PointF(rec.TopLeft.X - (roi.TopLeft.X - peri), rec.TopLeft.Y - (roi.TopLeft.Y - peri)),
+            new PointF(rec.TopRight.X - (roi.TopLeft.X - peri), rec.TopRight.Y - (roi.TopLeft.Y - peri)),
+            new PointF(rec.BottomLeft.X - (roi.TopLeft.X - peri), rec.BottomLeft.Y - (roi.TopLeft.Y - peri)),
+            new PointF(rec.BottomRight.X - (roi.TopLeft.X - peri), rec.BottomRight.Y - (roi.TopLeft.Y - peri))
             };
 
-            if (Within(rec, roi))
-            {
-                recs.RemoveAt(idx);
-                g.FillPolygon(brush, points);
-            }
-            else
-            {
-                for (int i = 0; i < 4; i++)
-                {
-                    if (points[i].X > roi.Width)
-                    {
-                        points[i].X = roi.Width;
-                    }
-                    else if (points[i].X < 0)
-                    {
-                        points[i].X = 0;
-                    }
-                    if (points[i].Y > roi.Height)
-                    {
-                        points[i].Y = roi.Height;
-                    }
-                    else if (points[i].Y < 0)
-                    {
-                        points[i].Y = 0;
-                    }
-                }
-                g.FillPolygon(brush, points);
-            }
+            g.FillPolygon(brush, points);
         }
         //GetBitmap的roi部分也還不清楚會是以何格式傳輸
         public void GetBitmap(List<Rectangle> data, Rectangle roi)
         {
-            img = new Bitmap((int)Math.Ceiling(roi.Width), (int)Math.Ceiling(roi.Height));
+            float peri = Math.Max(MaxWidth, MaxHeight);
+
+            img = new Bitmap((int)Math.Ceiling(roi.Width + 2 * peri), (int)Math.Ceiling(roi.Height + 2 * peri));
             g = Graphics.FromImage(img);
             g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighSpeed;
             g.Clear(Color.Black);
@@ -184,10 +169,19 @@ namespace RoiProcessor
                 if (Out(data[i], roi)) continue;
                 else
                 {
-                    FillPolygon(brush, data[i], roi, i );
+                    if (Within(data[i], roi))
+                    {
+                        recs.RemoveAt(i);
+                    }
+                    FillPolygon(brush, data[i], roi, peri);
                 }
             }
-            img.Save("ROI.bmp");
+            var result = new Bitmap((int)Math.Ceiling(roi.Width), (int)Math.Ceiling(roi.Height));
+            using (var graph = Graphics.FromImage(result))
+            {
+                graph.DrawImage(img, peri, peri, (int)Math.Ceiling(roi.Width), (int)Math.Ceiling(roi.Height));
+            }
+            result.Save("ROI.bmp");
         }
     }
 }
