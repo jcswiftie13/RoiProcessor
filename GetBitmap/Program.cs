@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Text.RegularExpressions;
 
 namespace RoiProcessor
 {
@@ -32,10 +33,10 @@ namespace RoiProcessor
             Width = width;
             Center = origin;
 
-            BottomLeft = new Coord(Center.X - Width / 2, Center.Y - Height / 2);
-            BottomRight = new Coord(Center.X + Width / 2, Center.Y - Height / 2);
-            TopLeft = new Coord(Center.X - Width / 2, Center.Y + Height / 2);
-            TopRight = new Coord(Center.X + Width / 2, Center.Y + Height / 2);
+            BottomLeft = new Coord(Center.X - Width / 2, Center.Y + Height / 2);
+            BottomRight = new Coord(Center.X + Width / 2, Center.Y + Height / 2);
+            TopLeft = new Coord(Center.X - Width / 2, Center.Y - Height / 2);
+            TopRight = new Coord(Center.X + Width / 2, Center.Y - Height / 2);
         }
 
         private void Move(Coord c)
@@ -88,33 +89,25 @@ namespace RoiProcessor
     {
         public Image img;
         public Graphics g;
-        public float MaxHeight = 0;
-        public float MaxWidth = 0;
-        private List<Rectangle> recs;
+        private List<Rectangle> recs = new List<Rectangle>();
 
-        public Processor(string data)
+        public Processor(string data, float height, float width)
         {
-            DataParser(data);
+            DataParser(data, height, width);
         }
 
         //DataParser未完成由於目前得到的範例資料還不足以得到整個矩形的座標, 先前有討論過後續可能會給矩形的寬高, 將再視情況開發
-        public void DataParser(string data)
+        public void DataParser(string data, float height, float width)
         {
             string line;
-            recs = new List<Rectangle>();
+            Coord tcoord;
             System.IO.StreamReader file = new System.IO.StreamReader(data);
             while ((line = file.ReadLine()) != null)
             {
-                Rectangle temp = new Rectangle();
-                if (MaxHeight < temp.Height)
-                {
-                    MaxHeight = temp.Height;
-                }
-                if (MaxWidth < temp.Width)
-                {
-                    MaxWidth = temp.Width;
-                }
-                temp.Rotate();
+                Regex pattern = new Regex(@"-?\d+.\d+");
+                MatchCollection matches = pattern.Matches(line);
+                Rectangle temp = new Rectangle(tcoord = new Coord(Convert.ToSingle(matches[0].Value), Convert.ToSingle(matches[1].Value)), height, width);
+                temp.Rotate(Convert.ToSingle(matches[2].Value));
                 recs.Add(temp);
             }
         }
@@ -127,7 +120,7 @@ namespace RoiProcessor
             Coord r2 = rec.BottomRight;
 
             if (l1.X >= r2.X || l2.X >= r1.X) return true;
-            if (l1.Y <= r2.Y || l2.Y <= r1.Y) return true;
+            if (r1.Y <= r2.Y || l2.Y >= r1.Y) return true;
             return false;
         }
 
@@ -142,23 +135,21 @@ namespace RoiProcessor
             return false;
         }
 
-        private void FillPolygon(Brush brush, Rectangle rec, Rectangle roi, float peri)
+        private void FillPolygon(Brush brush, Rectangle rec, Rectangle roi)
         {
             PointF[] points = new PointF[4] {
-            new PointF(rec.TopLeft.X - (roi.TopLeft.X - peri), rec.TopLeft.Y - (roi.TopLeft.Y - peri)),
-            new PointF(rec.TopRight.X - (roi.TopLeft.X - peri), rec.TopRight.Y - (roi.TopLeft.Y - peri)),
-            new PointF(rec.BottomLeft.X - (roi.TopLeft.X - peri), rec.BottomLeft.Y - (roi.TopLeft.Y - peri)),
-            new PointF(rec.BottomRight.X - (roi.TopLeft.X - peri), rec.BottomRight.Y - (roi.TopLeft.Y - peri))
+            new PointF(rec.TopLeft.X - roi.TopLeft.X, rec.TopLeft.Y - roi.TopLeft.Y),
+            new PointF(rec.BottomLeft.X - roi.TopLeft.X, rec.BottomLeft.Y - roi.TopLeft.Y),
+            new PointF(rec.BottomRight.X - roi.TopLeft.X, rec.BottomRight.Y - roi.TopLeft.Y),
+            new PointF(rec.TopRight.X - roi.TopLeft.X, rec.TopRight.Y - roi.TopLeft.Y)
             };
 
             g.FillPolygon(brush, points);
         }
         //GetBitmap的roi部分也還不清楚會是以何格式傳輸
-        public void GetBitmap(List<Rectangle> data, Rectangle roi)
+        public void GetBitmap(Rectangle roi)
         {
-            float peri = Math.Max(MaxWidth, MaxHeight);
-
-            img = new Bitmap((int)Math.Ceiling(roi.Width + 2 * peri), (int)Math.Ceiling(roi.Height + 2 * peri));
+            img = new Bitmap((int)Math.Ceiling(roi.Width), (int)Math.Ceiling(roi.Height));
             g = Graphics.FromImage(img);
             g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighSpeed;
             g.Clear(Color.Black);
@@ -166,22 +157,29 @@ namespace RoiProcessor
 
             for (int i = 0; i < recs.Count; i++)
             {
-                if (Out(data[i], roi)) continue;
+                if (Out(recs[i], roi)) continue;
                 else
                 {
-                    if (Within(data[i], roi))
+                    if (Within(recs[i], roi))
                     {
                         recs.RemoveAt(i);
                     }
-                    FillPolygon(brush, data[i], roi, peri);
+                    FillPolygon(brush, recs[i], roi);
                 }
             }
-            var result = new Bitmap((int)Math.Ceiling(roi.Width), (int)Math.Ceiling(roi.Height));
-            using (var graph = Graphics.FromImage(result))
-            {
-                graph.DrawImage(img, peri, peri, (int)Math.Ceiling(roi.Width), (int)Math.Ceiling(roi.Height));
-            }
-            result.Save("ROI.bmp");
+
+            img.Save("ROI.bmp");
+
+        }
+    }
+    class test
+    {
+        static void Main()
+        {
+            Coord roicoord = new Coord(175, 175);
+            Rectangle roi = new Rectangle(roicoord, 100, 100);
+            Processor p = new Processor("test.txt", 50, 50);
+            p.GetBitmap(roi);
         }
     }
 }
