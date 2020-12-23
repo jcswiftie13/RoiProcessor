@@ -147,9 +147,10 @@ namespace RoiProcessor
             g.FillPolygon(brush, points);
         }
         //GetBitmap的roi部分也還不清楚會是以何格式傳輸
-        public void GetBitmap(Rectangle roi)
+        public Bitmap GetBitmap(Rectangle roi, float dpi)
         {
-            img = new Bitmap((int)Math.Ceiling(roi.Width), (int)Math.Ceiling(roi.Height));
+            float scale = Convert.ToSingle(0.01 * 0.393700787 * dpi);
+            img = new Bitmap((int)Math.Ceiling(roi.Width) , (int)Math.Ceiling(roi.Height));
             g = Graphics.FromImage(img);
             g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighSpeed;
             g.Clear(Color.Black);
@@ -168,8 +169,15 @@ namespace RoiProcessor
                 }
             }
 
-            img.Save("ROI.bmp");
+            Bitmap b = new Bitmap(Convert.ToInt32(img.Width * scale), Convert.ToInt32(img.Height * scale));
+            Graphics result = Graphics.FromImage((Image)b);
+            result.InterpolationMode = InterpolationMode.HighQualityBicubic;
 
+            result.DrawImage(img, 0, 0, Convert.ToInt32(img.Width * scale), Convert.ToInt32(img.Height * scale));
+            result.Dispose();
+
+            b.Save("ROI.bmp");
+            return (Bitmap)b;
         }
     }
     class test
@@ -179,7 +187,7 @@ namespace RoiProcessor
             Coord roicoord = new Coord(175, 175);
             Rectangle roi = new Rectangle(roicoord, 100, 100);
             Processor p = new Processor("test.txt", 50, 50);
-            p.GetBitmap(roi);
+            p.GetBitmap(roi, 200);
         }
     }
 }
