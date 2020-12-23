@@ -101,14 +101,21 @@ namespace RoiProcessor
         {
             string line;
             Coord tcoord;
+            Regex pattern = new Regex(@"-?\d+.\d+");
+            Regex nparts = new Regex("(?<=\"NumberOfParts\":)\\d+");
+
             System.IO.StreamReader file = new System.IO.StreamReader(data);
             while ((line = file.ReadLine()) != null)
             {
-                Regex pattern = new Regex(@"-?\d+.\d+");
+                Match match = nparts.Match(line);
                 MatchCollection matches = pattern.Matches(line);
-                Rectangle temp = new Rectangle(tcoord = new Coord(Convert.ToSingle(matches[0].Value), Convert.ToSingle(matches[1].Value)), height, width);
-                temp.Rotate(Convert.ToSingle(matches[2].Value));
-                recs.Add(temp);
+
+                for (int i = 0; i < Convert.ToInt32(match.Value); i++)
+                {
+                    Rectangle temp = new Rectangle(tcoord = new Coord(Convert.ToSingle(matches[i * 4 + 0].Value), Convert.ToSingle(matches[i * 4 + 1].Value)), height, width);
+                    temp.Rotate(Convert.ToSingle(matches[i * 4 + 2].Value));
+                    recs.Add(temp);
+                }
             }
         }
 
@@ -149,7 +156,8 @@ namespace RoiProcessor
         //GetBitmap的roi部分也還不清楚會是以何格式傳輸
         public Bitmap GetBitmap(Rectangle roi, float dpi)
         {
-            float scale = Convert.ToSingle(0.01 * 0.393700787 * dpi);
+            float scale = Convert.ToSingle(0.1 * 0.393700787 * dpi);
+
             img = new Bitmap((int)Math.Ceiling(roi.Width) , (int)Math.Ceiling(roi.Height));
             g = Graphics.FromImage(img);
             g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighSpeed;
@@ -186,8 +194,8 @@ namespace RoiProcessor
         {
             Coord roicoord = new Coord(175, 175);
             Rectangle roi = new Rectangle(roicoord, 100, 100);
-            Processor p = new Processor("test.txt", 50, 50);
-            p.GetBitmap(roi, 200);
+            Processor p = new Processor("test.txt", 19, 4.2f);
+            p.GetBitmap(roi, 102);
         }
     }
 }
