@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Text.RegularExpressions;
+using Newtonsoft.Json;
 
 namespace RoiProcessor
 {
@@ -87,24 +88,39 @@ namespace RoiProcessor
 
     public class Processor
     {
+        public float scale;
         public Image img;
         public Graphics g;
         private List<Rectangle> recs = new List<Rectangle>();
 
-        public Processor(string data, float height, float width)
+        public Processor(string data, float height, float width, float dpi)
         {
-            DataParser(data, height, width);
+            DataParser(data, height, width, dpi);
         }
 
-        //DataParser未完成由於目前得到的範例資料還不足以得到整個矩形的座標, 先前有討論過後續可能會給矩形的寬高, 將再視情況開發
-        public void DataParser(string data, float height, float width)
+        public void DataParser(string data, float height, float width, float dpi)
         {
-            string line;
+            string[] lines;
             Coord tcoord;
             Regex pattern = new Regex(@"-?\d+.\d+");
             Regex nparts = new Regex("(?<=\"NumberOfParts\":)\\d+");
+            scale = Convert.ToSingle(0.1 * 0.393700787 * dpi);
 
-            System.IO.StreamReader file = new System.IO.StreamReader(data);
+            lines = System.IO.File.ReadAllLines(data);
+            for (int i = 7; i < 8; i++)
+            {
+                Match match = nparts.Match(lines[i]);
+                MatchCollection matches = pattern.Matches(lines[i]);
+
+                for (int j = 0; j < Convert.ToInt32(match.Value); j++)
+                {
+                    Rectangle temp = new Rectangle(tcoord = new Coord(Convert.ToSingle(matches[j * 4 + 0].Value) * scale, Convert.ToSingle(matches[j * 4 + 1].Value) * scale), height * scale, width * scale);
+                    temp.Rotate(Convert.ToSingle(matches[j * 4 + 2].Value));
+                    recs.Add(temp);
+                }
+            }
+
+            /*System.IO.StreamReader file = new System.IO.StreamReader(data);
             while ((line = file.ReadLine()) != null)
             {
                 Match match = nparts.Match(line);
@@ -112,11 +128,11 @@ namespace RoiProcessor
 
                 for (int i = 0; i < Convert.ToInt32(match.Value); i++)
                 {
-                    Rectangle temp = new Rectangle(tcoord = new Coord(Convert.ToSingle(matches[i * 4 + 0].Value), Convert.ToSingle(matches[i * 4 + 1].Value)), height, width);
+                    Rectangle temp = new Rectangle(tcoord = new Coord(Convert.ToSingle(matches[i * 4 + 0].Value) * scale, Convert.ToSingle(matches[i * 4 + 1].Value) * scale), height * scale, width * scale);
                     temp.Rotate(Convert.ToSingle(matches[i * 4 + 2].Value));
                     recs.Add(temp);
                 }
-            }
+            }*/
         }
 
         public bool Out(Rectangle rec, Rectangle roi)
@@ -153,12 +169,12 @@ namespace RoiProcessor
 
             g.FillPolygon(brush, points);
         }
-        //GetBitmap的roi部分也還不清楚會是以何格式傳輸
-        public Bitmap GetBitmap(Rectangle roi, float dpi)
-        {
-            float scale = Convert.ToSingle(0.1 * 0.393700787 * dpi);
 
-            img = new Bitmap((int)Math.Ceiling(roi.Width) , (int)Math.Ceiling(roi.Height));
+        public Bitmap GetBitmap(Rectangle roi)
+        {
+            roi = new Rectangle(new Coord(roi.Center.X * scale, roi.Center.Y * scale), roi.Height * scale, roi.Width * scale);
+            img = new Bitmap((int)Math.Ceiling(roi.Width), (int)Math.Ceiling(roi.Height));
+
             g = Graphics.FromImage(img);
             g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighSpeed;
             g.Clear(Color.Black);
@@ -177,15 +193,15 @@ namespace RoiProcessor
                 }
             }
 
-            Bitmap b = new Bitmap(Convert.ToInt32(img.Width * scale), Convert.ToInt32(img.Height * scale));
+            /*Bitmap b = new Bitmap(Convert.ToInt32(img.Width * scale), Convert.ToInt32(img.Height * scale));
             Graphics result = Graphics.FromImage((Image)b);
             result.InterpolationMode = InterpolationMode.HighQualityBicubic;
 
             result.DrawImage(img, 0, 0, Convert.ToInt32(img.Width * scale), Convert.ToInt32(img.Height * scale));
-            result.Dispose();
+            result.Dispose();*/
 
-            b.Save("ROI.bmp");
-            return (Bitmap)b;
+            img.Save("ROI.bmp");
+            return (Bitmap)img;
         }
     }
     class test
@@ -194,8 +210,8 @@ namespace RoiProcessor
         {
             Coord roicoord = new Coord(175, 175);
             Rectangle roi = new Rectangle(roicoord, 100, 100);
-            Processor p = new Processor("test.txt", 19, 4.2f);
-            p.GetBitmap(roi, 102);
+            Processor p = new Processor("test.txt", 19, 4.2f, 2540);
+            p.GetBitmap(roi);
         }
     }
 }
