@@ -1,9 +1,11 @@
 ﻿using System;
+using System.Linq;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Text.RegularExpressions;
-using Newtonsoft.Json;
+using System.Diagnostics;
+using System.Threading;
 
 namespace RoiProcessor
 {
@@ -107,6 +109,7 @@ namespace RoiProcessor
             scale = Convert.ToSingle(0.1 * 0.393700787 * dpi);
 
             lines = System.IO.File.ReadAllLines(data);
+
             for (int i = 7; i < 8; i++)
             {
                 Match match = nparts.Match(lines[i]);
@@ -119,20 +122,6 @@ namespace RoiProcessor
                     recs.Add(temp);
                 }
             }
-
-            /*System.IO.StreamReader file = new System.IO.StreamReader(data);
-            while ((line = file.ReadLine()) != null)
-            {
-                Match match = nparts.Match(line);
-                MatchCollection matches = pattern.Matches(line);
-
-                for (int i = 0; i < Convert.ToInt32(match.Value); i++)
-                {
-                    Rectangle temp = new Rectangle(tcoord = new Coord(Convert.ToSingle(matches[i * 4 + 0].Value) * scale, Convert.ToSingle(matches[i * 4 + 1].Value) * scale), height * scale, width * scale);
-                    temp.Rotate(Convert.ToSingle(matches[i * 4 + 2].Value));
-                    recs.Add(temp);
-                }
-            }*/
         }
 
         public bool Out(Rectangle rec, Rectangle roi)
@@ -185,22 +174,11 @@ namespace RoiProcessor
                 if (Out(recs[i], roi)) continue;
                 else
                 {
-                    if (Within(recs[i], roi))
-                    {
-                        recs.RemoveAt(i);
-                    }
                     FillPolygon(brush, recs[i], roi);
                 }
             }
 
-            /*Bitmap b = new Bitmap(Convert.ToInt32(img.Width * scale), Convert.ToInt32(img.Height * scale));
-            Graphics result = Graphics.FromImage((Image)b);
-            result.InterpolationMode = InterpolationMode.HighQualityBicubic;
-
-            result.DrawImage(img, 0, 0, Convert.ToInt32(img.Width * scale), Convert.ToInt32(img.Height * scale));
-            result.Dispose();*/
-
-            img.Save("ROI.bmp");
+            img.Save($"test/ROI{roi.Center.X}_{roi.Center.Y}.bmp");
             return (Bitmap)img;
         }
     }
@@ -208,10 +186,32 @@ namespace RoiProcessor
     {
         static void Main()
         {
-            Coord roicoord = new Coord(175, 175);
-            Rectangle roi = new Rectangle(roicoord, 100, 100);
-            Processor p = new Processor("test.txt", 19, 4.2f, 2540);
-            p.GetBitmap(roi);
+            int roiHeight = 50;
+            int roiWidth = 50;
+            int picHeight = 300;
+            int picWidth = 300;
+            float recHeight = 19;
+            float recWidth = 4.2f;
+            float mm = 0.01f;
+            int dpi = Convert.ToInt32(1 / (0.393700787 * 0.1 / (1 / mm)));
+
+            List<int> timeList = new List<int>();
+            Rectangle roi = new Rectangle(new Coord(roiWidth/2, roiHeight/2), roiHeight, roiWidth);
+            Processor p = new Processor("test.txt", recHeight, recWidth, dpi);
+
+            var watch = Stopwatch.StartNew();
+            while (roi.Center.Y <= picHeight - roiHeight / 2)
+            {
+                while (roi.Center.X <= picWidth - roiWidth / 2)
+                {
+                    p.GetBitmap(roi);
+                    roi.Center.X += roiWidth;
+                }
+                roi.Center.Y += roi.Height;
+                roi.Center.X = roiWidth / 2;
+            }
+            watch.Stop();
+            var elapsed = watch.ElapsedMilliseconds;
         }
     }
 }
