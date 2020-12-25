@@ -91,8 +91,6 @@ namespace RoiProcessor
     public class Processor
     {
         public float scale;
-        public Image img;
-        public Graphics g;
         private List<Rectangle> recs = new List<Rectangle>();
 
         public Processor(string data, float height, float width, float dpi)
@@ -147,7 +145,7 @@ namespace RoiProcessor
             return false;
         }
 
-        private void FillPolygon(Brush brush, Rectangle rec, Rectangle roi)
+        private void FillPolygon(Graphics g, Brush brush, Rectangle rec, Rectangle roi)
         {
             PointF[] points = new PointF[4] {
             new PointF(rec.TopLeft.X - roi.TopLeft.X, rec.TopLeft.Y - roi.TopLeft.Y),
@@ -162,9 +160,9 @@ namespace RoiProcessor
         public Bitmap GetBitmap(Rectangle roi)
         {
             roi = new Rectangle(new Coord(roi.Center.X * scale, roi.Center.Y * scale), roi.Height * scale, roi.Width * scale);
-            img = new Bitmap((int)Math.Ceiling(roi.Width), (int)Math.Ceiling(roi.Height));
 
-            g = Graphics.FromImage(img);
+            Image img = new Bitmap((int)Math.Ceiling(roi.Width), (int)Math.Ceiling(roi.Height));
+            Graphics g = Graphics.FromImage(img);
             g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighSpeed;
             g.Clear(Color.Black);
             SolidBrush brush = new SolidBrush(Color.White);
@@ -174,11 +172,19 @@ namespace RoiProcessor
                 if (Out(recs[i], roi)) continue;
                 else
                 {
-                    FillPolygon(brush, recs[i], roi);
+                    FillPolygon(g, brush, recs[i], roi);
                 }
             }
+            using (System.IO.MemoryStream oMS = new System.IO.MemoryStream())
+            {
+                img.Save(oMS, System.Drawing.Imaging.ImageFormat.Jpeg);
 
-            img.Save($"test/ROI{roi.Center.X}_{roi.Center.Y}.bmp");
+                using (System.IO.FileStream oFS = System.IO.File.Open($"test/ROI{roi.Center.X}_{roi.Center.Y}.bmp", System.IO.FileMode.OpenOrCreate))
+                {
+                    oFS.Write(oMS.ToArray(), 0, oMS.ToArray().Length); 
+                }
+            }
+            //img.Save($"test/ROI{roi.Center.X}_{roi.Center.Y}.bmp");
             return (Bitmap)img;
         }
     }
@@ -193,6 +199,7 @@ namespace RoiProcessor
             float recHeight = 19;
             float recWidth = 4.2f;
             float mm = 0.01f;
+
             int dpi = Convert.ToInt32(1 / (0.393700787 * 0.1 / (1 / mm)));
 
             List<int> timeList = new List<int>();
@@ -200,11 +207,17 @@ namespace RoiProcessor
             Processor p = new Processor("test.txt", recHeight, recWidth, dpi);
 
             var watch = Stopwatch.StartNew();
-            while (roi.Center.Y <= picHeight - roiHeight / 2)
+
+            Thread[] threads = new Thread[picWidth / roiWidth * picHeight / roiHeight];
+
+            for (int j = 0; j < picHeight / roiHeight; j++)
             {
-                while (roi.Center.X <= picWidth - roiWidth / 2)
+                for (int i = 0; i < picWidth/roiWidth; i++)
                 {
-                    p.GetBitmap(roi);
+                    threads[j * picWidth / roiWidth + i] = new Thread(() => p.GetBitmap(roi));
+                    threads[j * picWidth / roiWidth + i].Start();
+                    threads[j * picWidth / roiWidth + i].Join();
+                    //p.GetBitmap(roi);
                     roi.Center.X += roiWidth;
                 }
                 roi.Center.Y += roi.Height;
@@ -212,6 +225,7 @@ namespace RoiProcessor
             }
             watch.Stop();
             var elapsed = watch.ElapsedMilliseconds;
+            Console.WriteLine(elapsed);
         }
     }
 }
