@@ -2,8 +2,9 @@
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
-using System.Text.RegularExpressions;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using System.Diagnostics;
 
 namespace RoiProcessor
 {
@@ -89,8 +90,6 @@ namespace RoiProcessor
     public class Processor
     {
         public float scale;
-        public Image img;
-        public Graphics g;
         private List<Rectangle> recs = new List<Rectangle>();
 
         public Processor(string data, float height, float width, float dpi)
@@ -98,41 +97,17 @@ namespace RoiProcessor
             DataParser(data, height, width, dpi);
         }
 
-        public void DataParser(string data, float height, float width, float dpi)
+        public void DataParser(string data, float height, float width, float mm)
         {
-            string[] lines;
-            Coord tcoord;
-            Regex pattern = new Regex(@"-?\d+.\d+");
-            Regex nparts = new Regex("(?<=\"NumberOfParts\":)\\d+");
-            scale = Convert.ToSingle(0.1 * 0.393700787 * dpi);
+            dynamic parsed = JObject.Parse(data);
+            scale = Convert.ToSingle(1 / mm);
 
-            lines = System.IO.File.ReadAllLines(data);
-            for (int i = 7; i < 8; i++)
+            for (int j = 0; j < Convert.ToInt32(parsed["NumberOfParts"]); j++)
             {
-                Match match = nparts.Match(lines[i]);
-                MatchCollection matches = pattern.Matches(lines[i]);
-
-                for (int j = 0; j < Convert.ToInt32(match.Value); j++)
-                {
-                    Rectangle temp = new Rectangle(tcoord = new Coord(Convert.ToSingle(matches[j * 4 + 0].Value) * scale, Convert.ToSingle(matches[j * 4 + 1].Value) * scale), height * scale, width * scale);
-                    temp.Rotate(Convert.ToSingle(matches[j * 4 + 2].Value));
-                    recs.Add(temp);
-                }
+                Rectangle temp = new Rectangle(new Coord(Convert.ToSingle(parsed["Positioning"][$"Part{j}"]["Center"][0]) * scale, Convert.ToSingle(parsed["Positioning"][$"Part{j}"]["Center"][1]) * scale), height * scale, width * scale);
+                temp.Rotate(Convert.ToSingle(parsed["Positioning"][$"Part{j}"]["DeltaAngle"]));
+                recs.Add(temp);
             }
-
-            /*System.IO.StreamReader file = new System.IO.StreamReader(data);
-            while ((line = file.ReadLine()) != null)
-            {
-                Match match = nparts.Match(line);
-                MatchCollection matches = pattern.Matches(line);
-
-                for (int i = 0; i < Convert.ToInt32(match.Value); i++)
-                {
-                    Rectangle temp = new Rectangle(tcoord = new Coord(Convert.ToSingle(matches[i * 4 + 0].Value) * scale, Convert.ToSingle(matches[i * 4 + 1].Value) * scale), height * scale, width * scale);
-                    temp.Rotate(Convert.ToSingle(matches[i * 4 + 2].Value));
-                    recs.Add(temp);
-                }
-            }*/
         }
 
         public bool Out(Rectangle rec, Rectangle roi)
@@ -158,7 +133,7 @@ namespace RoiProcessor
             return false;
         }
 
-        private void FillPolygon(Brush brush, Rectangle rec, Rectangle roi)
+        private void FillPolygon(Graphics g, Brush brush, Rectangle rec, Rectangle roi)
         {
             PointF[] points = new PointF[4] {
             new PointF(rec.TopLeft.X - roi.TopLeft.X, rec.TopLeft.Y - roi.TopLeft.Y),
@@ -173,9 +148,9 @@ namespace RoiProcessor
         public Bitmap GetBitmap(Rectangle roi)
         {
             roi = new Rectangle(new Coord(roi.Center.X * scale, roi.Center.Y * scale), roi.Height * scale, roi.Width * scale);
-            img = new Bitmap((int)Math.Ceiling(roi.Width), (int)Math.Ceiling(roi.Height));
+            Image img = new Bitmap((int)Math.Ceiling(roi.Width), (int)Math.Ceiling(roi.Height));
 
-            g = Graphics.FromImage(img);
+            Graphics g = Graphics.FromImage(img);
             g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighSpeed;
             g.Clear(Color.Black);
             SolidBrush brush = new SolidBrush(Color.White);
@@ -185,33 +160,51 @@ namespace RoiProcessor
                 if (Out(recs[i], roi)) continue;
                 else
                 {
-                    if (Within(recs[i], roi))
-                    {
-                        recs.RemoveAt(i);
-                    }
-                    FillPolygon(brush, recs[i], roi);
+                    FillPolygon(g, brush, recs[i], roi);
                 }
             }
 
-            /*Bitmap b = new Bitmap(Convert.ToInt32(img.Width * scale), Convert.ToInt32(img.Height * scale));
-            Graphics result = Graphics.FromImage((Image)b);
-            result.InterpolationMode = InterpolationMode.HighQualityBicubic;
-
-            result.DrawImage(img, 0, 0, Convert.ToInt32(img.Width * scale), Convert.ToInt32(img.Height * scale));
-            result.Dispose();*/
-
-            img.Save("ROI.bmp");
             return (Bitmap)img;
         }
     }
     class test
     {
+        public static string[] ReadData(string data)
+        {
+            string[] lines;
+            lines = System.IO.File.ReadAllLines(data);
+            return lines;
+        }
         static void Main()
         {
-            Coord roicoord = new Coord(175, 175);
-            Rectangle roi = new Rectangle(roicoord, 100, 100);
-            Processor p = new Processor("test.txt", 19, 4.2f, 2540);
-            p.GetBitmap(roi);
+            int roiHeight = 50;
+            int roiWidth = 50;
+            int picHeight = 300;
+            int picWidth = 300;
+            float recHeight = 19;
+            float recWidth = 4.2f;
+            float mm = 0.01f;
+
+            Rectangle roi = new Rectangle(new Coord(roiWidth / 2, roiHeight / 2), roiHeight, roiWidth);
+
+            string[] data = ReadData("test.txt");
+            Processor p = new Processor(data[7], recHeight, recWidth, mm);
+
+            var watch = Stopwatch.StartNew();
+
+            for (int j = 0; j < picHeight / roiHeight; j++)
+            {
+                for (int i = 0; i < picWidth / roiWidth; i++)
+                {
+                    p.GetBitmap(roi);
+                    roi.Center.X += roiWidth;
+                }
+                roi.Center.Y += roi.Height;
+                roi.Center.X = roiWidth / 2;
+            }
+            watch.Stop();
+            var elapsed = watch.ElapsedMilliseconds;
+            Console.WriteLine(elapsed);
         }
     }
 }
